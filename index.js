@@ -6,19 +6,14 @@ var fs = require('fs');
 var s3 = require('s3');
 
 function S3Zipper(awsConfig) {
-    var self = this
-    AWS.config.getCredentials(function (err) {
-      if (err) {
-        assert.ok(awsConfig, 'AWS S3 options must be defined.');
+    assert.ok(awsConfig, 'AWS S3 options must be defined.');
+    if (!awsConfig.useCredentials) {
         assert.notEqual(awsConfig.accessKeyId, undefined, 'Requires S3 AWS Key.');
         assert.notEqual(awsConfig.secretAccessKey, undefined, 'Requires S3 AWS Secret');
-        assert.notEqual(awsConfig.region, undefined, 'Requires AWS S3 region.');
-        assert.notEqual(awsConfig.bucket, undefined, 'Requires AWS S3 bucket.');
-        self.init(awsConfig);
-      } else {
-        self.init(awsConfig)
-      }
-    })
+    }
+    assert.notEqual(awsConfig.region, undefined, 'Requires AWS S3 region.');
+    assert.notEqual(awsConfig.bucket, undefined, 'Requires AWS S3 bucket.');
+    this.init(awsConfig);
 }
 
 
@@ -30,41 +25,25 @@ function listObjectInner() {
 S3Zipper.prototype = {
     init: function (awsConfig) {
         this.awsConfig = awsConfig;
-        var self = this
-        AWS.config.getCredentials(function (err) {
-
-            if (err) {
-                AWS.config.update({
-                    accessKeyId: awsConfig.accessKeyId,
-                    secretAccessKey: awsConfig.secretAccessKey,
-                    region: awsConfig.region
-                });
+        AWS.config.update({
+            accessKeyId: awsConfig.accessKeyId,
+            secretAccessKey: awsConfig.secretAccessKey,
+            region: awsConfig.region
+        });
+        this.s3bucket = new AWS.S3({
+            params: {
+                Bucket: this.awsConfig.bucket
             }
-
-            if (awsConfig.endpoint) {
-                AWS.config.update({
-                    endpoint: awsConfig.endpoint
-                });
-            }
-
-            self.s3bucket = new AWS.S3({
-                params: {
-                    Bucket: self.awsConfig.bucket
-                }
-            });
-
-        })
+        });
 
     }
     , filterOutFiles: function (fileObj) {
         return fileObj;
     }
-    , calculateFileName: function (f) {
+    , calculateFileName: function (f, params) {
         var name = f.Key.split("/");
         name.shift();
-        name = name.join("/");
-        return name;
-
+        return !params.folderPath ? name[name.length-1] : name.join("/");
     }
 
     /*
@@ -202,7 +181,7 @@ S3Zipper.prototype = {
                             callback(err);
                         else {
 
-                            var name = t.calculateFileName(f);
+                            var name = t.calculateFileName(f, params);
 
                             if (name === ""){
                                 callback(null, f);
@@ -245,11 +224,11 @@ S3Zipper.prototype = {
         var readStream = fs.createReadStream(localFileName);//tempFile
 
         this.s3bucket.upload({
-                Bucket: this.awsConfig.bucket
-                , Key: s3ZipFileName
-                , ContentType: "application/zip"
-                , Body: readStream
-            })
+            Bucket: this.awsConfig.bucket
+            , Key: s3ZipFileName
+            , ContentType: "application/zip"
+            , Body: readStream
+        })
             .on('httpUploadProgress', function (e) {
                 var p = Math.round(e.loaded / e.total * 100);
                 if (p % 10 == 0)
@@ -286,12 +265,13 @@ S3Zipper.prototype = {
                 ,startKey:arguments[1]
                 ,s3ZipFileName:arguments[2]
                 ,recursive: false
+                ,folderPath: typeof params.folderPath == 'boolean' ? params.folderPath : true
             };
             callback= arguments[3];
         }
 
         var t = this;
-        params.zipFileName = '__' + Date.now() + '.zip';
+        params.zipFileName = '/tmp/__' + Date.now() + '.zip';
 
         if (params.s3ZipFileName.indexOf('/') < 0)
             params.s3ZipFileName = params.s3FolderName + "/" + params.s3ZipFileName;
@@ -411,6 +391,7 @@ S3Zipper.prototype = {
                 , startKey:arguments[1]
                 , zipFileName:arguments[2]
                 , recursive: false
+                , folderPath: params.folderPath
             };
             callback= arguments[3];
         }
