@@ -1,5 +1,5 @@
 {
-  "name": "w-s3-zipper",
+  "name": "aws-s3-zipper",
   "version": "1.0.3",
   "description": "Zip files from and to an Amazon AWS S3 Bucket directory as a stream, file or fragments. Allows filtering files.",
   "main": "index.js",
